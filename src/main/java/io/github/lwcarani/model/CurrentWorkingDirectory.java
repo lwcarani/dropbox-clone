@@ -1,5 +1,6 @@
 package io.github.lwcarani.model;
 
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,12 +23,18 @@ public class CurrentWorkingDirectory {
 		return path.toString();
 	}
 
-	public String getPromptString() {
-		StringBuilder promptPath = new StringBuilder(username);
-		for (String component : pathComponents) {
-			promptPath.append("/").append(component);
+	public String getPromptString(String rootDirectory) {
+		String cleanRoot = rootDirectory.endsWith("/") || rootDirectory.endsWith("\\")
+				? rootDirectory.substring(0, rootDirectory.length() - 1)
+				: rootDirectory;
+
+		String basePath = Paths.get(cleanRoot, "dropbox-clone", username).toString();
+
+		if (pathComponents.isEmpty()) {
+			return basePath;
 		}
-		return promptPath.toString();
+
+		return Paths.get(basePath, String.join("/", pathComponents)).toString();
 	}
 
 	public void changeDirectory(String path) {
@@ -49,10 +56,5 @@ public class CurrentWorkingDirectory {
 				}
 			}
 		}
-	}
-
-	@Override
-	public String toString() {
-		return getPromptString();
 	}
 }

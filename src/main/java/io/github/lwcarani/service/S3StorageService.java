@@ -1,9 +1,12 @@
 package io.github.lwcarani.service;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,6 +22,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectResult;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
@@ -90,34 +94,158 @@ public class S3StorageService implements StorageService {
 		return List.of();
 	}
 
-	@Override
-	public boolean isValidDirectory(String currentPath, String newPath) {
-		if (newPath.equals("..")) {
-			String parentPath = getParentPath(currentPath);
-			return !parentPath.equals(currentPath);
-		}
+//	@Override
+//	public boolean isValidDirectory(String currentPath, String newPath) {
+//		if (newPath.equals("..")) {
+//			String parentPath = getParentPath(currentPath);
+//			return !parentPath.equals(currentPath);
+//		}
+//
+//		String fullPath = newPath.startsWith("/") ? currentPath.split("/")[0] + newPath : currentPath + "/" + newPath;
+//		fullPath = fullPath.endsWith("/") ? fullPath : fullPath + "/";
+//
+//		try {
+//			ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(fullPath)
+//					.withDelimiter("/").withMaxKeys(1);
+//			ListObjectsV2Result result = s3Client.listObjectsV2(req);
+//			return !result.getCommonPrefixes().isEmpty() || !result.getObjectSummaries().isEmpty();
+//		} catch (Exception e) {
+//			System.err.println("Couldn't validate directory in S3: " + e.getMessage());
+//		}
+//		return false;
+//	}
 
-		String fullPath = newPath.startsWith("/") ? currentPath.split("/")[0] + newPath : currentPath + "/" + newPath;
-		fullPath = fullPath.endsWith("/") ? fullPath : fullPath + "/";
+	@Override
+	public void pushToS3(String userId, String username, String rootDirectory) {
+		Path localRoot = Paths.get(rootDirectory, "dropbox-clone", username);
+		System.out.println("Push operation started.");
+		System.out.println("userId: " + userId);
+		System.out.println("username: " + username);
+		System.out.println("rootDirectory: " + rootDirectory);
+		System.out.println("Pushing to S3 from local root: " + localRoot);
+		try {
+			Files.walk(localRoot).forEach(path -> {
+				Path relativePath = localRoot.relativize(path);
+				String s3Key = userId + "/" + relativePath.toString().replace("\\", "/");
+
+				if (Files.isDirectory(path)) {
+					System.out.println("Creating directory in S3: " + s3Key);
+					s3Client.putObject(bucketName, s3Key + "/", new ByteArrayInputStream(new byte[0]),
+							new ObjectMetadata());
+				} else if (Files.isRegularFile(path)) {
+					System.out.println("Pushing file to S3: " + s3Key);
+					s3Client.putObject(bucketName, s3Key, path.toFile());
+				}
+			});
+			System.out.println("Push completed successfully.");
+		} catch (Exception e) {
+			System.err.println("Error during push operation: " + e.getMessage());
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public void pullFromS3(String userId, String username, String rootDirectory) {
+		System.out.println("Pull operation started.");
+		System.out.println("userId: " + userId);
+		System.out.println("username: " + username);
+		System.out.println("rootDirectory: " + rootDirectory);
+		String prefix = userId + "/";
+		System.out.println("S3 prefix: " + prefix);
+
+		Path localRoot = Paths.get(rootDirectory, "dropbox-clone", username);
+		System.out.println("Pulling from S3 to local root: " + localRoot);
 
 		try {
-			ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(fullPath)
-					.withDelimiter("/").withMaxKeys(1);
-			ListObjectsV2Result result = s3Client.listObjectsV2(req);
-			return !result.getCommonPrefixes().isEmpty() || !result.getObjectSummaries().isEmpty();
+			ListObjectsV2Request listRequest = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(prefix);
+			ListObjectsV2Result result;
+
+			do {
+				result = s3Client.listObjectsV2(listRequest);
+				for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
+					String key = objectSummary.getKey();
+					String relativePath = key.substring(prefix.length());
+					Path localPath = Paths.get(rootDirectory, "dropbox-clone", username, relativePath);
+
+					if (key.endsWith("/")) {
+						// It's a directory
+						System.out.println("Recreating directory: " + localPath);
+						try {
+							if (Files.exists(localPath)) {
+								Files.walk(localPath).sorted(Comparator.reverseOrder()).forEach(path -> {
+									try {
+										Files.delete(path);
+									} catch (IOException e) {
+										System.err
+												.println("Error deleting path: " + path + ". Error: " + e.getMessage());
+									}
+								});
+							}
+							Files.createDirectories(localPath);
+							System.out.println("Directory recreated successfully: " + localPath);
+						} catch (IOException e) {
+							System.err
+									.println("Error recreating directory: " + localPath + ". Error: " + e.getMessage());
+						}
+					} else {
+						// It's a file
+						System.out.println("Downloading file: " + key + " to " + localPath);
+						S3Object object = s3Client.getObject(bucketName, key);
+						Files.createDirectories(localPath.getParent());
+
+						// Check if file exists and if it's different from S3 version
+						if (!Files.exists(localPath) || Files.size(localPath) != objectSummary.getSize()
+								|| !Files.getLastModifiedTime(localPath).toInstant()
+										.equals(objectSummary.getLastModified().toInstant())) {
+
+							Files.copy(object.getObjectContent(), localPath, StandardCopyOption.REPLACE_EXISTING);
+							System.out.println("File updated: " + localPath);
+						} else {
+							System.out.println("File already up to date: " + localPath);
+						}
+					}
+				}
+				listRequest.setContinuationToken(result.getNextContinuationToken());
+			} while (result.isTruncated());
+
+			System.out.println("Pull completed successfully.");
 		} catch (Exception e) {
-			System.err.println("Couldn't validate directory in S3: " + e.getMessage());
+			System.err.println("Error during pull operation: " + e.getMessage());
+			e.printStackTrace();
 		}
-		return false;
 	}
 
-	private String getParentPath(String path) {
-		List<String> components = List.of(path.split("/"));
-		if (components.size() <= 1) {
-			return path;
-		}
-		return String.join("/", components.subList(0, components.size() - 1));
+	@Override
+	public boolean isValidS3Directory(String fullPath) {
+		ListObjectsV2Request listRequest = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(fullPath)
+				.withDelimiter("/").withMaxKeys(1);
+
+		ListObjectsV2Result result = s3Client.listObjectsV2(listRequest);
+		return !result.getCommonPrefixes().isEmpty() || !result.getObjectSummaries().isEmpty();
 	}
+
+	@Override
+	public void deleteDirectory(String fullPath) {
+		ListObjectsV2Request listRequest = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(fullPath);
+
+		ListObjectsV2Result result;
+		do {
+			result = s3Client.listObjectsV2(listRequest);
+			for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
+				s3Client.deleteObject(bucketName, objectSummary.getKey());
+				System.out.println("Successfully deleted from S3: " + objectSummary.getKey());
+			}
+			listRequest.setContinuationToken(result.getNextContinuationToken());
+		} while (result.isTruncated());
+	}
+
+//	private String getParentPath(String path) {
+//		List<String> components = List.of(path.split("/"));
+//		if (components.size() <= 1) {
+//			return path;
+//		}
+//		return String.join("/", components.subList(0, components.size() - 1));
+//	}
 
 	@Override
 	public void uploadFile(String fullPath, Path localFilePath, String remotePath) {

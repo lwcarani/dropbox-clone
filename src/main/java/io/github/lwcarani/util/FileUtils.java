@@ -47,8 +47,8 @@ public class FileUtils {
 		}
 	}
 
-	public static void createLocalDirectory(String rootPath, String relativePath) {
-		Path fullPath = Paths.get(rootPath, "dropbox-clone", relativePath);
+	public static void createLocalDirectory(String path) {
+		Path fullPath = Paths.get(path);
 
 		if (!Files.exists(fullPath)) {
 			try {
@@ -87,8 +87,8 @@ public class FileUtils {
 		}
 	}
 
-	public static boolean isValidLocalDirectory(String rootPath, String relativePath) {
-		Path fullPath = Paths.get(rootPath, "dropbox-clone", relativePath);
+	public static boolean isValidLocalDirectory(String path) {
+		Path fullPath = Paths.get(path);
 		return Files.isDirectory(fullPath);
 	}
 }

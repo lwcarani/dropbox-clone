@@ -14,7 +14,13 @@ public interface StorageService {
 
 	byte[] downloadFile(String fullPath, String filePath);
 
-	boolean isValidDirectory(String currentPath, String newPath);
-
 	void syncLocalChanges(String rootDirectory, String userId);
+
+	void pushToS3(String userId, String username, String rootDirectory);
+
+	void pullFromS3(String userId, String username, String rootDirectory);
+
+	void deleteDirectory(String fullPath);
+
+	boolean isValidS3Directory(String fullPath);
 }

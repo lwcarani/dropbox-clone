@@ -1,6 +1,7 @@
 package io.github.lwcarani.cli;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -87,7 +88,7 @@ public class DropboxCliRunner {
 		if (currentUser == null) {
 			System.out.print("> ");
 		} else {
-			System.out.print(cwd.getPromptString() + "> ");
+			System.out.print(cwd.getPromptString(rootDirectory) + "> ");
 		}
 		System.out.flush(); // Ensure the prompt is displayed before waiting for input
 	}
@@ -140,6 +141,15 @@ public class DropboxCliRunner {
 		case "ls":
 			ls(args);
 			break;
+		case "push":
+			push();
+			break;
+		case "pull":
+			pull();
+			break;
+		case "rm":
+			rm(args);
+			break;
 		case "help":
 			printHelp();
 			break;
@@ -179,7 +189,7 @@ public class DropboxCliRunner {
 				System.out.println("Login successful. Welcome, " + currentUser.getUsername() + "!");
 
 				setRootDirectory();
-				FileUtils.createLocalDirectory(rootDirectory, currentUser.getUsername());
+				FileUtils.createLocalDirectory(cwd.getPromptString(rootDirectory));
 			} else {
 				System.out.println(
 						"Login failed. Please check your credentials. To make a new account, type 'signup' to begin.");
@@ -247,11 +257,84 @@ public class DropboxCliRunner {
 		}
 
 		storageService.createFolder(cwd.getFullPath(), folderName);
-		FileUtils.createLocalDirectory(rootDirectory, cwd.getPromptString() + "/" + folderName);
+		FileUtils.createLocalDirectory(cwd.getPromptString(rootDirectory) + "/" + folderName);
+	}
+
+	private void rm(String path) {
+		if (path.isEmpty()) {
+			System.out.println("Usage: rm <path>");
+			return;
+		}
+
+		String fullCloudPath = cwd.getFullPath() + "/" + path;
+		Path fullLocalPath = Paths.get(cwd.getPromptString(rootDirectory), path);
+
+		if (!storageService.isValidS3Directory(fullCloudPath) && !Files.exists(fullLocalPath)) {
+			System.out.println("Directory does not exist locally or in the cloud: " + path);
+			return;
+		}
+
+		System.out.println(
+				"Warning: This will delete the directory and all its contents both locally and in S3. Continue? (y/n)");
+		String confirmation = scanner.nextLine().trim().toLowerCase();
+
+		if (confirmation.equals("y")) {
+			// Delete from S3
+			if (storageService.isValidS3Directory(fullCloudPath)) {
+				storageService.deleteDirectory(fullCloudPath);
+				System.out.println("Cloud directory deleted successfully: " + fullCloudPath);
+			} else {
+				System.out.println("Cloud directory does not exist: " + fullCloudPath);
+			}
+
+			// Delete locally
+			if (Files.exists(fullLocalPath) && Files.isDirectory(fullLocalPath)) {
+				try {
+					Files.walk(fullLocalPath).sorted((p1, p2) -> -p1.compareTo(p2)).forEach(p -> {
+						try {
+							Files.delete(p);
+						} catch (Exception e) {
+							System.err.println("Error deleting " + p + ": " + e.getMessage());
+						}
+					});
+					System.out.println("Local directory deleted successfully: " + fullLocalPath);
+				} catch (Exception e) {
+					System.err.println("Error deleting local directory: " + e.getMessage());
+				}
+			} else {
+				System.out.println("Local directory does not exist: " + fullLocalPath);
+			}
+		} else {
+			System.out.println("Delete operation cancelled.");
+		}
+	}
+
+	private void push() {
+		System.out.println(
+				"Warning: This will overwrite any existing files in the cloud with local files. Continue? (y/n)");
+		String confirmation = scanner.nextLine().trim().toLowerCase();
+		if (confirmation.equals("y")) {
+			storageService.pushToS3(currentUser.getUserId(), currentUser.getUsername(), rootDirectory);
+			System.out.println("Push completed successfully.");
+		} else {
+			System.out.println("Push operation cancelled.");
+		}
+	}
+
+	private void pull() {
+		System.out.println(
+				"Warning: This will overwrite any existing local files with files currently stored in the cloud. Continue? (y/n)");
+		String confirmation = scanner.nextLine().trim().toLowerCase();
+		if (confirmation.equals("y")) {
+			storageService.pullFromS3(currentUser.getUserId(), currentUser.getUsername(), rootDirectory);
+			System.out.println("Pull completed successfully.");
+		} else {
+			System.out.println("Pull operation cancelled.");
+		}
 	}
 
 	private void ls(String path) {
-		Path fullPath = Paths.get(rootDirectory, "dropbox-clone", cwd.getPromptString(), path);
+		Path fullPath = Paths.get(cwd.getPromptString(rootDirectory), path);
 		File directory = fullPath.toFile();
 
 		if (!directory.exists() || !directory.isDirectory()) {
@@ -263,7 +346,8 @@ public class DropboxCliRunner {
 		if (filesAndDirs == null || filesAndDirs.length == 0) {
 			System.out.println("Directory is empty.");
 		} else {
-			System.out.println("Contents of " + cwd.getPromptString() + (path.isEmpty() ? "" : "/" + path) + ":");
+			System.out.println(
+					"Contents of " + cwd.getPromptString(rootDirectory) + (path.isEmpty() ? "" : "/" + path) + ":");
 			List<String> fileNames = Arrays.stream(filesAndDirs).map(File::getName).sorted()
 					.collect(Collectors.toList());
 
@@ -279,10 +363,10 @@ public class DropboxCliRunner {
 			return;
 		}
 
-		String newPath = cwd.getPromptString() + "/" + path;
-		if (FileUtils.isValidLocalDirectory(rootDirectory, newPath)) {
+		String newPath = cwd.getPromptString(rootDirectory) + "/" + path;
+		if (FileUtils.isValidLocalDirectory(newPath)) {
 			cwd.changeDirectory(path);
-			System.out.println("Changed directory to: " + cwd.getPromptString());
+			System.out.println("Changed directory to: " + cwd.getPromptString(rootDirectory));
 		} else {
 			System.out.println("Invalid directory path: " + path);
 		}
@@ -326,9 +410,12 @@ public class DropboxCliRunner {
 		System.out.println("  signup - Sign up for a new account");
 		System.out.println("  login - Log in to your account");
 		System.out.println("  logout - Log out of your account");
-		System.out.println("  mkdir <folder_name> - Make a new directory in the current location");
-		System.out.println("  cd <path> - Change current directory");
+		System.out.println("  push - Upload all local files and folders to cloud storage");
+		System.out.println("  pull - Download all file files and folders from cloud to local machine");
+		System.out.println("  mkdir [folder_name] - Make a new directory in the current location");
+		System.out.println("  cd [path] - Change current directory");
 		System.out.println("  ls [path] - Display contents of current folder or specified path");
+		System.out.println("  rm [path] - Delete a directory and its contents both locally and from cloud");
 		System.out.println("  help - Show this help message");
 		System.out.println("  exit - Exit the application");
 	}
