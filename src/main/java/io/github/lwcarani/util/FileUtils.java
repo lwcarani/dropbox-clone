@@ -63,7 +63,7 @@ public class FileUtils {
 				System.err.println("Failed to create local directory: " + e.getMessage());
 			}
 		} else {
-			System.out.println("Local directory already exists: " + fullPath);
+//			System.out.println("Local directory already exists: " + fullPath);
 		}
 	}
 
@@ -78,7 +78,7 @@ public class FileUtils {
 				System.err.println("Failed to create root directory: " + e.getMessage());
 			}
 		} else {
-			System.out.println("Root directory already exists: " + fullPath);
+//			System.out.println("Root directory already exists: " + fullPath);
 		}
 	}
 
@@ -98,5 +98,10 @@ public class FileUtils {
 	public static boolean isValidLocalDirectory(String path) {
 		Path fullPath = Paths.get(path);
 		return Files.isDirectory(fullPath);
+	}
+
+	// Check if a given path is a valid local directory
+	public static boolean isValidLocalDirectory(Path path) {
+		return Files.isDirectory(path);
 	}
 }

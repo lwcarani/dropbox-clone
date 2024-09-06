@@ -43,6 +43,19 @@ public class CurrentWorkingDirectory {
 		return Paths.get(basePath, String.join("/", pathComponents)).toString();
 	}
 
+	// Generates a string path based on the root directory
+	public String getRootString(String rootDirectory) {
+		// Clean the root directory path
+		String cleanRoot = rootDirectory.endsWith("/") || rootDirectory.endsWith("\\")
+				? rootDirectory.substring(0, rootDirectory.length() - 1)
+				: rootDirectory;
+
+		// Construct the base path
+		String basePath = Paths.get(cleanRoot, "dropbox-clone", username).toString();
+
+		return basePath;
+	}
+
 	// Changes the current directory based on the given path
 	public void changeDirectory(String path) {
 		if (path.equals("/")) {
