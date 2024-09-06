@@ -1,5 +1,6 @@
 package io.github.lwcarani.cli;
 
+import java.io.Console;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,6 +11,9 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Component;
 
 import com.amazonaws.services.cognitoidp.model.AuthenticationResultType;
@@ -21,10 +25,12 @@ import io.github.lwcarani.service.StorageService;
 import io.github.lwcarani.service.UserPreferenceService;
 import io.github.lwcarani.service.UserService;
 import io.github.lwcarani.util.FileUtils;
+import io.github.lwcarani.util.PasswordValidator;
 
 @Component
 public class DropboxCliRunner {
 
+	// Service dependencies and state variables
 	private final UserService userService;
 	private final StorageService storageService;
 	private final UserPreferenceService preferenceService;
@@ -35,6 +41,10 @@ public class DropboxCliRunner {
 	private String rootDirectory;
 	private volatile boolean running;
 
+	@Autowired
+	private ApplicationContext context;
+
+	// Constructor initializes services and scanner
 	public DropboxCliRunner(UserService userService, StorageService storageService,
 			UserPreferenceService preferenceService) {
 		this.userService = userService;
@@ -44,6 +54,7 @@ public class DropboxCliRunner {
 		this.running = true;
 	}
 
+	// Main run loop for the CLI
 	public void run(String... args) {
 		System.out.println("Welcome to Dropbox Clone CLI!");
 		System.out.println("Type 'help' for a list of commands.");
@@ -71,6 +82,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// Graceful shutdown of the application
 	private void shutdown() {
 		if (!running)
 			return; // Avoid running shutdown logic multiple times
@@ -82,8 +94,12 @@ public class DropboxCliRunner {
 			scanner.close();
 		}
 		System.out.println("Goodbye!");
+
+		// Trigger Spring Boot shutdown
+		((ConfigurableApplicationContext) context).close();
 	}
 
+	// Displays the command prompt
 	private void displayPrompt() {
 		if (currentUser == null) {
 			System.out.print("> ");
@@ -93,6 +109,7 @@ public class DropboxCliRunner {
 		System.out.flush(); // Ensure the prompt is displayed before waiting for input
 	}
 
+	// Handles commands when the user is not logged in
 	private void handleLoggedOutCommands(String command) {
 		switch (command) {
 		case "login":
@@ -112,6 +129,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// Handles commands when the user is logged in
 	private void handleLoggedInCommands(String input) {
 		if (!userService.authenticateUserSession(accessToken)) {
 			System.out.println("Your session has expired. Please log in again.");
@@ -164,6 +182,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// User login process
 	private void login() {
 		if (currentUser != null) {
 			System.out.println("You are already logged in as " + currentUser.getUsername());
@@ -174,8 +193,18 @@ public class DropboxCliRunner {
 			System.out.print("Enter username: ");
 			String username = scanner.nextLine().trim();
 
-			System.out.print("Enter password: ");
-			String password = scanner.nextLine().trim();
+			Console console = System.console();
+			char[] passwordArray;
+			if (console != null) {
+				passwordArray = console.readPassword("Enter password: ");
+			} else {
+				System.out.print("Enter password: ");
+				passwordArray = scanner.nextLine().trim().toCharArray();
+			}
+			String password = new String(passwordArray);
+
+			// Clear the password array for security
+			java.util.Arrays.fill(passwordArray, ' ');
 
 			AuthenticationResultType authResult = userService.authenticateUser(username, password);
 			if (authResult != null && authResult.getAccessToken() != null) {
@@ -184,9 +213,6 @@ public class DropboxCliRunner {
 				String email = ((CognitoUserService) userService).getEmail(accessToken);
 
 				System.out.println("Welcome back, user!");
-				System.out.println("username: " + username);
-				System.out.println("userId: " + userId);
-				System.out.println("Email: " + email);
 				currentUser = new User(username, email, userId);
 				cwd = new CurrentWorkingDirectory(userId, username);
 				System.out.println("Login successful. Welcome, " + currentUser.getUsername() + "!");
@@ -202,6 +228,22 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// User logout process
+	private void logout() {
+		if (currentUser != null) {
+			String username = currentUser.getUsername();
+			userService.logout(accessToken);
+			currentUser = null;
+			accessToken = null;
+			cwd = null;
+			rootDirectory = null;
+			System.out.println("Logout successful. Goodbye, " + username + "!");
+		} else {
+			System.out.println("No user is currently logged in.");
+		}
+	}
+
+	// Changes the root directory for the current user for the application
 	private void changeRootDirectory(String newPath) {
 		if (newPath.isEmpty()) {
 			System.out.println("Usage: change_root <new_root_path>");
@@ -215,11 +257,16 @@ public class DropboxCliRunner {
 		}
 
 		rootDirectory = newPath;
+
+		// Save the location of the rootDirectory for this user so that next session we
+		// can automatically load it
 		preferenceService.saveUserPreference(currentUser.getUserId(), "rootDirectory", rootDirectory);
 		System.out.println("Root directory changed to: " + rootDirectory);
 		FileUtils.createRootDirectory(rootDirectory);
 	}
 
+	// Sets the root directory if provided a valid path, otherwise uses a default
+	// location
 	private void setRootDirectory() {
 		String savedRootDir = preferenceService.getUserPreference(currentUser.getUserId(), "rootDirectory");
 
@@ -239,20 +286,7 @@ public class DropboxCliRunner {
 		FileUtils.createRootDirectory(rootDirectory);
 	}
 
-	private void logout() {
-		if (currentUser != null) {
-			String username = currentUser.getUsername();
-			userService.logout(accessToken);
-			currentUser = null;
-			accessToken = null;
-			cwd = null;
-			rootDirectory = null;
-			System.out.println("Logout successful. Goodbye, " + username + "!");
-		} else {
-			System.out.println("No user is currently logged in.");
-		}
-	}
-
+	// Creates a new directory
 	private void mkdir(String folderName) {
 		if (folderName.isEmpty()) {
 			System.out.println("Usage: mkdir <folder_name>");
@@ -263,6 +297,7 @@ public class DropboxCliRunner {
 		FileUtils.createLocalDirectory(cwd.getPromptString(rootDirectory) + "/" + folderName);
 	}
 
+	// Removes a directory and its contents
 	private void rm(String path) {
 		if (path.isEmpty()) {
 			System.out.println("Usage: rm <path>");
@@ -312,6 +347,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// Pushes local folder and file changes to cloud storage
 	private void push() {
 		System.out.println(
 				"Warning: This will overwrite any existing files in the cloud with local files. Continue? (y/n)");
@@ -324,6 +360,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// Pulls cloud changes to local, overwriting any duplicate folder or file names
 	private void pull() {
 		System.out.println(
 				"Warning: This will overwrite any existing local files with files currently stored in the cloud. Continue? (y/n)");
@@ -336,6 +373,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// Lists contents of a directory
 	private void ls(String path) {
 		Path fullPath = Paths.get(cwd.getPromptString(rootDirectory), path);
 		File directory = fullPath.toFile();
@@ -355,11 +393,12 @@ public class DropboxCliRunner {
 					.collect(Collectors.toList());
 
 			for (String fileName : fileNames) {
-				System.out.println(fileName);
+				System.out.println("  " + fileName);
 			}
 		}
 	}
 
+	// Changes the current working directory
 	private void cd(String path) {
 		if (path.isEmpty()) {
 			System.out.println("Usage: cd <directory>");
@@ -375,6 +414,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// User signup process
 	private void signup() {
 		System.out.print("Enter email address: ");
 		String email = scanner.nextLine().trim();
@@ -387,14 +427,34 @@ public class DropboxCliRunner {
 			System.out.print("Enter username: ");
 			username = scanner.nextLine().trim();
 
-			System.out.print("Enter password: ");
-			password = scanner.nextLine().trim();
+			Console console = System.console();
+			char[] passwordArray;
+			if (console != null) {
+				passwordArray = console.readPassword("Enter password: ");
+			} else {
+				System.out.print("Enter password: ");
+				passwordArray = scanner.nextLine().trim().toCharArray();
+			}
+			password = new String(passwordArray);
 
-			System.out.print("Confirm password: ");
-			confirmPassword = scanner.nextLine().trim();
+			// Clear the password array for security
+			java.util.Arrays.fill(passwordArray, ' ');
+
+			if (console != null) {
+				passwordArray = console.readPassword("Confirm password: ");
+			} else {
+				System.out.print("Confirm password: ");
+				passwordArray = scanner.nextLine().trim().toCharArray();
+			}
+			confirmPassword = new String(passwordArray);
+
+			// Clear the password array for security
+			java.util.Arrays.fill(passwordArray, ' ');
 
 			if (!password.equals(confirmPassword)) {
 				System.out.println("Passwords do not match. Please try again.");
+			} else if (!PasswordValidator.isValid(password)) {
+				System.out.println(PasswordValidator.getValidationMessage(password));
 			} else {
 				break;
 			}
@@ -409,6 +469,7 @@ public class DropboxCliRunner {
 		}
 	}
 
+	// Deletes the user's account
 	private void deleteAccount() {
 
 		System.out.println(
@@ -437,6 +498,7 @@ public class DropboxCliRunner {
 
 	}
 
+	// Prints help information
 	private void printHelp() {
 		System.out.println("Available commands:");
 		System.out.println("  signup - Sign up for a new account");

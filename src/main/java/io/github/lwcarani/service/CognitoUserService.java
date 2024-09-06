@@ -33,6 +33,7 @@ public class CognitoUserService implements UserService {
 
 	private final AWSCognitoIdentityProvider cognitoClient;
 
+	// AWS Cognito configuration values
 	@Value("${aws.cognito.userPoolId}")
 	private String userPoolId;
 
@@ -42,12 +43,17 @@ public class CognitoUserService implements UserService {
 	@Value("${aws.cognito.clientSecret}")
 	private String clientSecret;
 
+	// Constructor with dependency injection
+	// Automatically inject the AWSCognitoIdentityProvider instance that was created
+	// in the io.github.lwcarani.config AwsConfig.java file
 	public CognitoUserService(AWSCognitoIdentityProvider cognitoClient) {
 		this.cognitoClient = cognitoClient;
 	}
 
+	// Calculate secret hash for Cognito authentication
 	private String calculateSecretHash(String username) {
 		try {
+			// Implementation of HMAC-SHA256 hashing
 			Mac mac = Mac.getInstance("HmacSHA256");
 			SecretKeySpec signingKey = new SecretKeySpec(clientSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 			mac.init(signingKey);
@@ -59,9 +65,11 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Authenticate user with Cognito
 	@Override
 	public AuthenticationResultType authenticateUser(String username, String password) {
 		try {
+			// Set up authentication parameters
 			final Map<String, String> authParams = new HashMap<>();
 			authParams.put("USERNAME", username);
 			authParams.put("PASSWORD", password);
@@ -71,6 +79,7 @@ public class CognitoUserService implements UserService {
 					.withAuthFlow(AuthFlowType.ADMIN_NO_SRP_AUTH).withUserPoolId(userPoolId).withClientId(clientId)
 					.withAuthParameters(authParams);
 
+			// Perform authentication request
 			AdminInitiateAuthResult result = cognitoClient.adminInitiateAuth(authRequest);
 			return result.getAuthenticationResult();
 		} catch (Exception e) {
@@ -79,6 +88,7 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Validate user session with access token
 	@Override
 	public boolean authenticateUserSession(String accessToken) {
 		try {
@@ -91,15 +101,18 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Create a new user in Cognito
 	@Override
 	public User createUser(String username, String password, String email) {
 		try {
+			// Set up user creation request
 			AttributeType emailAttr = new AttributeType().withName("email").withValue(email);
 
 			AdminCreateUserRequest createUserRequest = new AdminCreateUserRequest().withUserPoolId(userPoolId)
 					.withUsername(username).withTemporaryPassword(password).withUserAttributes(emailAttr)
 					.withMessageAction(MessageActionType.SUPPRESS);
 
+			// Create user and set permanent password
 			AdminCreateUserResult createUserResult = cognitoClient.adminCreateUser(createUserRequest);
 
 			AdminSetUserPasswordRequest setPasswordRequest = new AdminSetUserPasswordRequest()
@@ -107,6 +120,7 @@ public class CognitoUserService implements UserService {
 
 			cognitoClient.adminSetUserPassword(setPasswordRequest);
 
+			// Extract user ID from creation result
 			String userId = createUserResult.getUser().getAttributes().stream()
 					.filter(attr -> "sub".equals(attr.getName())).findFirst().map(AttributeType::getValue).orElse(null);
 
@@ -117,6 +131,7 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Get user ID from access token
 	public String getUserId(String accessToken) {
 		try {
 			GetUserRequest getUserRequest = new GetUserRequest().withAccessToken(accessToken);
@@ -129,6 +144,7 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Get user email from access token
 	public String getEmail(String accessToken) {
 		try {
 			GetUserRequest getUserRequest = new GetUserRequest().withAccessToken(accessToken);
@@ -141,6 +157,7 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Log out user by invalidating their access token
 	@Override
 	public void logout(String accessToken) {
 		try {
@@ -151,6 +168,7 @@ public class CognitoUserService implements UserService {
 		}
 	}
 
+	// Delete user account
 	@Override
 	public void deleteUser(String accessToken) {
 		try {
