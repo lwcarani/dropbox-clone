@@ -304,6 +304,31 @@ public class DropboxCliRunner {
 			return;
 		}
 
+		String currentFullPath = cwd.getPromptString(rootDirectory);
+		Path currentPath = Paths.get(currentFullPath);
+		Path newPath;
+
+		// Ensure the new path is still within the root directory
+		try {
+			if (Paths.get(path).isAbsolute()) {
+				// Handle absolute path
+				newPath = Paths.get(path);
+			} else {
+				// Handle relative path
+				newPath = currentPath.resolve(path).normalize();
+			}
+		} catch (Exception e) {
+			System.out.println("Error: " + e.getMessage());
+			System.out.printf("%s is an invalid path.", path);
+			return;
+		}
+		// Ensure the new path is still within the root directory
+		Path rootPath = Paths.get(cwd.getRootString(rootDirectory));
+		if (!newPath.startsWith(rootPath)) {
+			System.out.println("Cannot navigate outside of root directory.");
+			return;
+		}
+
 		String fullCloudPath = cwd.getFullPath() + "/" + path;
 		Path fullLocalPath = Paths.get(cwd.getPromptString(rootDirectory), path);
 
@@ -375,6 +400,33 @@ public class DropboxCliRunner {
 
 	// Lists contents of a directory
 	private void ls(String path) {
+
+		String currentFullPath = cwd.getPromptString(rootDirectory);
+		Path currentPath = Paths.get(currentFullPath);
+		Path newPath;
+
+		// Ensure the new path is still within the root directory
+		try {
+			if (Paths.get(path).isAbsolute()) {
+				// Handle absolute path
+				newPath = Paths.get(path);
+			} else {
+				// Handle relative path
+				newPath = currentPath.resolve(path).normalize();
+			}
+		} catch (Exception e) {
+			System.out.println("Error: " + e.getMessage());
+			System.out.printf("%s is an invalid path.", path);
+			return;
+		}
+		// Ensure the new path is still within the root directory
+		Path rootPath = Paths.get(cwd.getRootString(rootDirectory));
+		if (!newPath.startsWith(rootPath)) {
+			System.out.println("Cannot navigate outside of root directory.");
+			return;
+		}
+
+		// Now check happy path
 		Path fullPath = Paths.get(cwd.getPromptString(rootDirectory), path);
 		File directory = fullPath.toFile();
 
@@ -405,7 +457,42 @@ public class DropboxCliRunner {
 			return;
 		}
 
-		String newPath = cwd.getPromptString(rootDirectory) + "/" + path;
+		// handle reset to root and up one directory
+		if (path.equals("/")) {
+			cwd.changeDirectory(path);
+			System.out.println("Changed directory to: " + cwd.getPromptString(rootDirectory));
+			return;
+		} else if (path.equals("..")) {
+			cwd.changeDirectory(path);
+			System.out.println("Changed directory to: " + cwd.getPromptString(rootDirectory));
+			return;
+		}
+		// otherwise, proceed to more complex requests
+
+		String currentFullPath = cwd.getPromptString(rootDirectory);
+		Path currentPath = Paths.get(currentFullPath);
+		Path newPath;
+
+		try {
+			if (Paths.get(path).isAbsolute()) {
+				// Handle absolute path
+				newPath = Paths.get(path);
+			} else {
+				// Handle relative path
+				newPath = currentPath.resolve(path).normalize();
+			}
+		} catch (Exception e) {
+			System.out.println("Error: " + e.getMessage());
+			System.out.printf("%s is an invalid path.", path);
+			return;
+		}
+		// Ensure the new path is still within the root directory
+		Path rootPath = Paths.get(cwd.getRootString(rootDirectory));
+		if (!newPath.startsWith(rootPath)) {
+			System.out.println("Cannot navigate outside of root directory.");
+			return;
+		}
+
 		if (FileUtils.isValidLocalDirectory(newPath)) {
 			cwd.changeDirectory(path);
 			System.out.println("Changed directory to: " + cwd.getPromptString(rootDirectory));
