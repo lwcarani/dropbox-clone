@@ -15,42 +15,26 @@ import org.springframework.stereotype.Service;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.SdkClientException;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectResult;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 
-import jakarta.annotation.PostConstruct;
-
 @Service
 public class S3StorageService implements StorageService {
-	private AmazonS3 s3Client;
 
-	@Value("${aws.s3.bucket-user-storage}")
-	private String bucketName;
+	private final AmazonS3 s3Client;
+	private final String bucketName;
 
-	@Value("${aws.accessKey}")
-	private String accessKey;
-
-	@Value("${aws.secretKey}")
-	private String secretKey;
-
-	@Value("${aws.region}")
-	private String region;
-
-	@PostConstruct
-	public void init() {
-		BasicAWSCredentials awsCreds = new BasicAWSCredentials(accessKey, secretKey);
-		this.s3Client = AmazonS3ClientBuilder.standard().withRegion(Regions.fromName(region))
-				.withCredentials(new AWSStaticCredentialsProvider(awsCreds)).build();
+	public S3StorageService(AmazonS3 s3Client, @Value("${aws.s3.bucket-user-storage}") String bucketName) {
+		this.s3Client = s3Client;
+		this.bucketName = bucketName;
 	}
 
 	@Override
@@ -94,27 +78,6 @@ public class S3StorageService implements StorageService {
 		return List.of();
 	}
 
-//	@Override
-//	public boolean isValidDirectory(String currentPath, String newPath) {
-//		if (newPath.equals("..")) {
-//			String parentPath = getParentPath(currentPath);
-//			return !parentPath.equals(currentPath);
-//		}
-//
-//		String fullPath = newPath.startsWith("/") ? currentPath.split("/")[0] + newPath : currentPath + "/" + newPath;
-//		fullPath = fullPath.endsWith("/") ? fullPath : fullPath + "/";
-//
-//		try {
-//			ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(fullPath)
-//					.withDelimiter("/").withMaxKeys(1);
-//			ListObjectsV2Result result = s3Client.listObjectsV2(req);
-//			return !result.getCommonPrefixes().isEmpty() || !result.getObjectSummaries().isEmpty();
-//		} catch (Exception e) {
-//			System.err.println("Couldn't validate directory in S3: " + e.getMessage());
-//		}
-//		return false;
-//	}
-
 	@Override
 	public void pushToS3(String userId, String username, String rootDirectory) {
 		Path localRoot = Paths.get(rootDirectory, "dropbox-clone", username);
@@ -123,26 +86,112 @@ public class S3StorageService implements StorageService {
 		System.out.println("username: " + username);
 		System.out.println("rootDirectory: " + rootDirectory);
 		System.out.println("Pushing to S3 from local root: " + localRoot);
+
 		try {
 			Files.walk(localRoot).forEach(path -> {
 				Path relativePath = localRoot.relativize(path);
 				String s3Key = userId + "/" + relativePath.toString().replace("\\", "/");
 
 				if (Files.isDirectory(path)) {
-					System.out.println("Creating directory in S3: " + s3Key);
-					s3Client.putObject(bucketName, s3Key + "/", new ByteArrayInputStream(new byte[0]),
-							new ObjectMetadata());
+					// For directories, we'll create an empty object to represent the folder in S3
+					if (!path.equals(localRoot)) { // Skip creating an object for the root directory
+						System.out.println("Creating directory in S3: " + s3Key + "/");
+						try {
+							// Create empty content with known length
+							byte[] emptyContent = new byte[0];
+							ObjectMetadata metadata = new ObjectMetadata();
+							metadata.setContentLength(0);
+
+							s3Client.putObject(new PutObjectRequest(bucketName, s3Key + "/",
+									new ByteArrayInputStream(emptyContent), metadata));
+						} catch (AmazonS3Exception e) {
+							System.err.println("Error creating directory in S3: " + e.getMessage());
+						}
+					}
 				} else if (Files.isRegularFile(path)) {
 					System.out.println("Pushing file to S3: " + s3Key);
-					s3Client.putObject(bucketName, s3Key, path.toFile());
+					try {
+						s3Client.putObject(bucketName, s3Key, path.toFile());
+					} catch (AmazonS3Exception e) {
+						System.err.println("Error uploading file to S3: " + e.getMessage());
+					}
 				}
 			});
-			System.out.println("Push completed successfully.");
-		} catch (Exception e) {
+		} catch (IOException e) {
 			System.err.println("Error during push operation: " + e.getMessage());
 			e.printStackTrace();
 		}
 	}
+
+//	@Override
+//	public void pushToS3(String userId, String username, String rootDirectory) {
+//		Path localRoot = Paths.get(rootDirectory, "dropbox-clone", username);
+//		System.out.println("Push operation started.");
+//		System.out.println("userId: " + userId);
+//		System.out.println("username: " + username);
+//		System.out.println("rootDirectory: " + rootDirectory);
+//		System.out.println("Pushing to S3 from local root: " + localRoot);
+//
+//		try {
+//			Files.walk(localRoot).forEach(path -> {
+//				Path relativePath = localRoot.relativize(path);
+//				String s3Key = userId + "/" + relativePath.toString().replace("\\", "/");
+//
+//				if (Files.isDirectory(path)) {
+//					// For directories, we'll create an empty object to represent the folder in S3
+//					if (!path.equals(localRoot)) { // Skip creating an object for the root directory
+//						System.out.println("Creating directory in S3: " + s3Key + "/");
+//						try {
+//							s3Client.putObject(bucketName, s3Key + "/", new ByteArrayInputStream(new byte[0]),
+//									new ObjectMetadata());
+//						} catch (AmazonS3Exception e) {
+//							System.err.println("Error creating directory in S3: " + e.getMessage());
+//						}
+//					}
+//				} else if (Files.isRegularFile(path)) {
+//					System.out.println("Pushing file to S3: " + s3Key);
+//					try {
+//						s3Client.putObject(bucketName, s3Key, path.toFile());
+//					} catch (AmazonS3Exception e) {
+//						System.err.println("Error uploading file to S3: " + e.getMessage());
+//					}
+//				}
+//			});
+//			System.out.println("Push completed successfully.");
+//		} catch (IOException e) {
+//			System.err.println("Error during push operation: " + e.getMessage());
+//			e.printStackTrace();
+//		}
+//	}
+
+//	@Override
+//	public void pushToS3(String userId, String username, String rootDirectory) {
+//		Path localRoot = Paths.get(rootDirectory, "dropbox-clone", username);
+//		System.out.println("Push operation started.");
+//		System.out.println("userId: " + userId);
+//		System.out.println("username: " + username);
+//		System.out.println("rootDirectory: " + rootDirectory);
+//		System.out.println("Pushing to S3 from local root: " + localRoot);
+//		try {
+//			Files.walk(localRoot).forEach(path -> {
+//				Path relativePath = localRoot.relativize(path);
+//				String s3Key = userId + "/" + relativePath.toString().replace("\\", "/");
+//
+//				if (Files.isDirectory(path)) {
+//					System.out.println("Creating directory in S3: " + s3Key);
+//					s3Client.putObject(bucketName, s3Key + "/", new ByteArrayInputStream(new byte[0]),
+//							new ObjectMetadata());
+//				} else if (Files.isRegularFile(path)) {
+//					System.out.println("Pushing file to S3: " + s3Key);
+//					s3Client.putObject(bucketName, s3Key, path.toFile());
+//				}
+//			});
+//			System.out.println("Push completed successfully.");
+//		} catch (Exception e) {
+//			System.err.println("Error during push operation: " + e.getMessage());
+//			e.printStackTrace();
+//		}
+//	}
 
 	@Override
 	public void pullFromS3(String userId, String username, String rootDirectory) {
@@ -207,8 +256,6 @@ public class S3StorageService implements StorageService {
 				}
 				listRequest.setContinuationToken(result.getNextContinuationToken());
 			} while (result.isTruncated());
-
-			System.out.println("Pull completed successfully.");
 		} catch (Exception e) {
 			System.err.println("Error during pull operation: " + e.getMessage());
 			e.printStackTrace();
@@ -239,14 +286,6 @@ public class S3StorageService implements StorageService {
 		} while (result.isTruncated());
 	}
 
-//	private String getParentPath(String path) {
-//		List<String> components = List.of(path.split("/"));
-//		if (components.size() <= 1) {
-//			return path;
-//		}
-//		return String.join("/", components.subList(0, components.size() - 1));
-//	}
-
 	@Override
 	public void uploadFile(String fullPath, Path localFilePath, String remotePath) {
 		System.out.format("Uploading %s to S3 bucket %s...\n", localFilePath, bucketName);
@@ -260,44 +299,6 @@ public class S3StorageService implements StorageService {
 			System.err.println("SDK Client couldn't upload file: " + e.getMessage());
 		}
 	}
-
-//	@Override
-//	public boolean isValidDirectory(String currentPath, String newPath) {
-//		String fullPath = currentPath;
-//		if (!newPath.startsWith("/")) {
-//			fullPath += "/" + newPath;
-//		} else {
-//			fullPath = currentPath.split("/")[0] + newPath;
-//		}
-//
-//		try {
-//			ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(bucketName).withPrefix(fullPath)
-//					.withDelimiter("/").withMaxKeys(1);
-//			ListObjectsV2Result result = s3Client.listObjectsV2(req);
-//			return !result.getCommonPrefixes().isEmpty() || !result.getObjectSummaries().isEmpty();
-//		} catch (AmazonServiceException e) {
-//			System.err.println("Amazon S3 couldn't validate directory: " + e.getErrorMessage());
-//		} catch (SdkClientException e) {
-//			System.err.println("SDK Client couldn't validate directory: " + e.getMessage());
-//		}
-//		return false;
-//	}
-
-//	@Override
-//	public List<String> listFiles(String userId, String path) {
-//		System.out.format("Listing objects in %s/%s:\n", userId, path);
-//		ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(bucketName)
-//				.withPrefix(userId + "/" + path);
-//		try {
-//			ListObjectsV2Result result = s3Client.listObjectsV2(req);
-//			return result.getObjectSummaries().stream().map(S3ObjectSummary::getKey).collect(Collectors.toList());
-//		} catch (AmazonServiceException e) {
-//			System.err.println("Amazon S3 couldn't list files: " + e.getErrorMessage());
-//		} catch (SdkClientException e) {
-//			System.err.println("SDK Client couldn't list files: " + e.getMessage());
-//		}
-//		return List.of(); // Return empty list if there's an error
-//	}
 
 	@Override
 	public void deleteFile(String userId, String filePath) {

@@ -11,10 +11,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.cognitoidp.AWSCognitoIdentityProvider;
-import com.amazonaws.services.cognitoidp.AWSCognitoIdentityProviderClientBuilder;
 import com.amazonaws.services.cognitoidp.model.AdminCreateUserRequest;
 import com.amazonaws.services.cognitoidp.model.AdminCreateUserResult;
 import com.amazonaws.services.cognitoidp.model.AdminInitiateAuthRequest;
@@ -30,12 +27,11 @@ import com.amazonaws.services.cognitoidp.model.GlobalSignOutRequest;
 import com.amazonaws.services.cognitoidp.model.MessageActionType;
 
 import io.github.lwcarani.model.User;
-import jakarta.annotation.PostConstruct;
 
 @Service
 public class CognitoUserService implements UserService {
 
-	private AWSCognitoIdentityProvider cognitoClient;
+	private final AWSCognitoIdentityProvider cognitoClient;
 
 	@Value("${aws.cognito.userPoolId}")
 	private String userPoolId;
@@ -46,20 +42,8 @@ public class CognitoUserService implements UserService {
 	@Value("${aws.cognito.clientSecret}")
 	private String clientSecret;
 
-	@Value("${aws.accessKey}")
-	private String accessKey;
-
-	@Value("${aws.secretKey}")
-	private String secretKey;
-
-	@Value("${aws.region}")
-	private String region;
-
-	@PostConstruct
-	public void init() {
-		BasicAWSCredentials awsCreds = new BasicAWSCredentials(accessKey, secretKey);
-		this.cognitoClient = AWSCognitoIdentityProviderClientBuilder.standard()
-				.withCredentials(new AWSStaticCredentialsProvider(awsCreds)).withRegion(region).build();
+	public CognitoUserService(AWSCognitoIdentityProvider cognitoClient) {
+		this.cognitoClient = cognitoClient;
 	}
 
 	private String calculateSecretHash(String username) {

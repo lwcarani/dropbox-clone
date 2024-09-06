@@ -129,6 +129,9 @@ public class DropboxCliRunner {
 		case "logout":
 			logout();
 			break;
+		case "delete_account":
+			deleteAccount();
+			break;
 		case "mkdir":
 			mkdir(args);
 			break;
@@ -385,10 +388,10 @@ public class DropboxCliRunner {
 			username = scanner.nextLine().trim();
 
 			System.out.print("Enter password: ");
-			password = scanner.nextLine().trim(); // TODO - In a real app, use a secure method to read passwords
+			password = scanner.nextLine().trim();
 
 			System.out.print("Confirm password: ");
-			confirmPassword = scanner.nextLine().trim(); // In a real app, use a secure method to read passwords
+			confirmPassword = scanner.nextLine().trim();
 
 			if (!password.equals(confirmPassword)) {
 				System.out.println("Passwords do not match. Please try again.");
@@ -398,6 +401,7 @@ public class DropboxCliRunner {
 		}
 
 		try {
+			userService.createUser(username, password, email);
 			System.out.println("Your account has successfully been created!");
 			System.out.println("Please log in with your new credentials.");
 		} catch (RuntimeException e) {
@@ -405,17 +409,47 @@ public class DropboxCliRunner {
 		}
 	}
 
+	private void deleteAccount() {
+
+		System.out.println(
+				"Warning: proceeding will permanently delete your account and you will lose all files backed up in the cloud. Continue? (y/n)");
+		String confirmation = scanner.nextLine().trim().toLowerCase();
+
+		if (confirmation.equals("y")) {
+			try {
+				// delete cloud bucket holding their data
+				storageService.deleteDirectory(currentUser.getUserId());
+				// delete account
+				userService.deleteUser(accessToken);
+				// end user session
+				currentUser = null;
+				accessToken = null;
+				cwd = null;
+				rootDirectory = null;
+				System.out.println("Your account has successfully been deleted!");
+
+			} catch (RuntimeException e) {
+				System.out.println("An error occurred while trying to delete your account: " + e.getMessage());
+			}
+		} else {
+			System.out.println("Delete account operation cancelled.");
+		}
+
+	}
+
 	private void printHelp() {
 		System.out.println("Available commands:");
 		System.out.println("  signup - Sign up for a new account");
 		System.out.println("  login - Log in to your account");
 		System.out.println("  logout - Log out of your account");
+		System.out.println("  delete_account - Permanently delete your account");
 		System.out.println("  push - Upload all local files and folders to cloud storage");
 		System.out.println("  pull - Download all file files and folders from cloud to local machine");
-		System.out.println("  mkdir [folder_name] - Make a new directory in the current location");
-		System.out.println("  cd [path] - Change current directory");
-		System.out.println("  ls [path] - Display contents of current folder or specified path");
-		System.out.println("  rm [path] - Delete a directory and its contents both locally and from cloud");
+		System.out.println("  mkdir <folder_name> - Make a new directory at the specified location");
+		System.out.println("  cd <path> - Change current directory to the specified path");
+		System.out.println("  ls <path> - Display contents of current folder or specified path");
+		System.out.println("  rm <path> - Delete a directory and its contents both locally and from cloud");
+		System.out.println("  chang_root <path> - Set a new root directory for your dropbox-clone files");
 		System.out.println("  help - Show this help message");
 		System.out.println("  exit - Exit the application");
 	}
