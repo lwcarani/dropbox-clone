@@ -50,17 +50,19 @@ The project is organized into several packages:
    ```
 4. Create an `application.properties` file in the `src/main/resources` directory with the following content:
    ```
-   aws.accessKey=your_aws_access_key
-   aws.secretKey=your_aws_secret_key
-   aws.region=your_aws_region
-   aws.cognito.userPoolId=your_cognito_user_pool_id
-   aws.cognito.clientId=your_cognito_client_id
-   aws.cognito.clientSecret=your_cognito_client_secret
-   aws.s3.bucket-user-storage=your_s3_bucket_name_for_user_storage
-   aws.s3.bucket-user-preferences=your_s3_bucket_name_for_user_preferences
+   aws.s3.bucket-user-preferences=<your_s3_bucket_name_for_user_preferences>
+   aws.s3.bucket-user-storage=<your_s3_bucket_name_for_user_storage>
+   aws.accessKey=<your_aws_access_key>
+   aws.secretKey=<your_aws_secret_key>
+   aws.region=<your_aws_region>
+   aws.cognito.userPoolId=<your_cognito_user_pool_id>
+   aws.cognito.clientId=<your_cognito_client_id>
+   aws.cognito.clientSecret=<your_cognito_client_secret>
+   spring.main.banner-mode=console
+   logging.level.root=ERROR
    ```
-   Replace the placeholder values with your actual AWS credentials and resource identifiers.
 
+   Replace the placeholder values with your actual AWS credentials and resource identifiers.
 
 ## Dependencies
 
