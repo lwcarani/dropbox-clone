@@ -345,7 +345,7 @@ public class DropboxCliRunner {
 			// Delete from S3
 			if (storageService.isValidS3Directory(fullCloudPath)) {
 				storageService.deleteDirectory(fullCloudPath);
-				System.out.println("Cloud directory deleted successfully: " + fullCloudPath);
+				System.out.println("Cloud directory deleted successfully: " + path);
 			} else {
 				System.out.println("Cloud directory does not exist: " + fullCloudPath);
 			}
@@ -360,7 +360,7 @@ public class DropboxCliRunner {
 							System.err.println("Error deleting " + p + ": " + e.getMessage());
 						}
 					});
-					System.out.println("Local directory deleted successfully: " + fullLocalPath);
+					System.out.println("Local directory deleted successfully: " + path);
 				} catch (Exception e) {
 					System.err.println("Error deleting local directory: " + e.getMessage());
 				}

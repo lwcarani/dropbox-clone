@@ -220,7 +220,7 @@ public class S3StorageService implements StorageService {
 			result = s3Client.listObjectsV2(listRequest);
 			for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
 				s3Client.deleteObject(bucketName, objectSummary.getKey());
-				System.out.println("Successfully deleted from S3: " + objectSummary.getKey());
+//				System.out.println("Successfully deleted from S3: " + objectSummary.getKey());
 			}
 			listRequest.setContinuationToken(result.getNextContinuationToken());
 		} while (result.isTruncated());
