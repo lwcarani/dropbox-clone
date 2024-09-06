@@ -1,6 +1,6 @@
 # Dropbox Clone
 
-This project is a command-line interface (CLI) application that mimics some of the core functionalities of Dropbox, allowing users to synchronize files between their local machine and cloud storage (in this particular implementation, Amazon Web Services (AWS) Simple Storage Service (S3)).
+This project is a command-line interface (CLI) application (written in Java) that mimics some of the core functionalities of Dropbox, allowing users to synchronize files between their local machine and cloud storage (in this particular implementation, Amazon Web Services (AWS) Simple Storage Service (S3)).
 
 ## Features
 
