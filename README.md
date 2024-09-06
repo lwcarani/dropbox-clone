@@ -42,7 +42,7 @@ The project is organized into several packages:
 1. Ensure you have Java 17 installed.
 2. Clone the repository:
    ```
-   git clone https://github.com/your-username/dropbox-clone.git
+   git clone https://github.com/lwcarani/dropbox-clone.git
    ```
 3. Navigate to the project directory:
    ```
