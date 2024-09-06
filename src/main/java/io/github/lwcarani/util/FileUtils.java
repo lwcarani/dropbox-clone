@@ -12,6 +12,7 @@ import javax.swing.JFileChooser;
 
 public class FileUtils {
 
+	// Select root directory based on environment (GUI or console)
 	public static String selectRootDirectory() {
 		if (GraphicsEnvironment.isHeadless()) {
 			return selectRootDirectoryConsole();
@@ -20,8 +21,10 @@ public class FileUtils {
 		}
 	}
 
+	// Select root directory using GUI file chooser
 	private static String selectRootDirectoryGUI() {
 		JFileChooser fileChooser = new JFileChooser();
+		// Set up file chooser properties
 		fileChooser.setDialogTitle("Select Root Directory");
 		fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 		fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
@@ -34,6 +37,7 @@ public class FileUtils {
 		return null;
 	}
 
+	// Select root directory via console input
 	private static String selectRootDirectoryConsole() {
 		Scanner scanner = new Scanner(System.in);
 		System.out.println("Running in headless mode. Please enter the full path for the root directory:");
@@ -47,6 +51,7 @@ public class FileUtils {
 		}
 	}
 
+	// Create a local directory if it doesn't exist
 	public static void createLocalDirectory(String path) {
 		Path fullPath = Paths.get(path);
 
@@ -62,6 +67,7 @@ public class FileUtils {
 		}
 	}
 
+	// Create the root directory for the application
 	public static void createRootDirectory(String rootPath) {
 		Path fullPath = Paths.get(rootPath, "dropbox-clone");
 		if (!Files.exists(fullPath)) {
@@ -76,6 +82,7 @@ public class FileUtils {
 		}
 	}
 
+	// Create a local file with given content
 	public static void createLocalFile(String rootPath, String relativePath, byte[] content) {
 		Path fullPath = Paths.get(rootPath, "dropbox-clone", relativePath);
 		try {
@@ -87,6 +94,7 @@ public class FileUtils {
 		}
 	}
 
+	// Check if a given path is a valid local directory
 	public static boolean isValidLocalDirectory(String path) {
 		Path fullPath = Paths.get(path);
 		return Files.isDirectory(fullPath);
